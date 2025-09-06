@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RAG Q/A — Tailwind UI (with Uploads)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50:'#ecf5ff',100:'#d7eaff',200:'#b7d8ff',300:'#8cc0ff',400:'#5aa3ff',500:'#0A84FF',600:'#0668cc',700:'#064ea0',800:'#083f7f',900:'#0a335f' }
+          },
+          boxShadow: { glow: '0 0 0 1px rgba(10,132,255,.25), 0 10px 25px rgba(10,132,255,.15)' },
+          backgroundImage: { grid: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.06) 1px, transparent 0)' }
+        }
+      }
+    }
+  </script>
+  <style>
+    .noise{position:fixed;inset:0;pointer-events:none;background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="4" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23n)" opacity=".02"/></svg>')}
+    .prose-answer p{margin:.5rem 0}.prose-answer code{background:rgba(255,255,255,.06);padding:.125rem .375rem;border-radius:.25rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.prose-answer pre{background:#0b1220;border:1px solid #1f2a44;padding:.75rem;border-radius:.5rem;overflow:auto}
+  </style>
+</head>
+<body class="min-h-screen bg-[#0b0e14] text-slate-100 selection:bg-brand-500/30">
+  <div class="noise"></div>
+  <div class="pointer-events-none fixed -top-24 -left-24 h-96 w-96 rounded-full bg-brand-500/20 blur-3xl"></div>
+  <div class="pointer-events-none fixed -bottom-32 -right-24 h-[28rem] w-[28rem] rounded-full bg-indigo-500/10 blur-3xl"></div>
+
+  <header class="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-[#0b0e14]/70 border-b border-white/5">
+    <div class="mx-auto max-w-5xl px-4 py-3 flex items-center gap-3">
+      <div class="h-9 w-9 rounded-xl bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center shadow-glow">
+        <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v4M12 18v4M3.5 7l3.5 2M17 15l3.5 2M2 12h4M18 12h4M3.5 17l3.5-2M17 9l3.5-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="flex-1">
+        <h1 class="text-lg font-semibold leading-tight">RAG Q/A</h1>
+        <p class="text-xs text-slate-400">LangChain · Groq · FastAPI</p>
+      </div>
+
+      <button id="clearBtn" class="hidden sm:inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10 transition">
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6l1 12a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2l1-12"/><path d="M10 11v6M14 11v6"/></svg>
+        Clear
+      </button>
+
+      <button id="settingsBtn" class="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10 transition">
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/><path d="M3 10h2l1-2 2-1V3h4v2l2 1 1 2h2v4h-2l-1 2-2 1v2H8v-2l-2-1-1-2H3z"/></svg>
+        Settings
+      </button>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-5xl px-4 pb-28 pt-6">
+    <!-- Upload Panel -->
+    <section class="mb-6">
+      <div class="rounded-2xl border border-white/10 bg-[#0f1320] p-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-semibold">Upload documents</h2>
+            <p class="text-xs text-slate-400">PDF, TXT, MD — they’ll be added to your knowledge base.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="fileInput" type="file" class="hidden" multiple accept=".pdf,.txt,.md" />
+            <button id="pickBtn" class="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10">Choose files</button>
+          </div>
+        </div>
+        <div id="dropZone" class="mt-3 rounded-xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-slate-300 text-center hover:border-brand-500/40">
+          Drag & drop files here
+        </div>
+        <div id="uploadHint" class="mt-2 hidden text-xs text-slate-400">Uploading…</div>
+        <ul id="uploadList" class="mt-3 space-y-2 text-xs"></ul>
+        <div id="docsPanel" class="mt-3 hidden">
+          <div class="text-xs text-slate-400">Recently added:</div>
+          <div id="docsBadges" class="mt-1 flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Suggestion chips -->
+    <div id="suggestions" class="mb-4 flex flex-wrap gap-2">
+      <button class="chip" data-q="What does this repo cover?">What does this repo cover?</button>
+      <button class="chip" data-q="Give me a summary of sample.pdf">Summary of sample.pdf</button>
+      <button class="chip" data-q="List key terms with brief definitions">Key terms</button>
+      <button class="chip" data-q="Where in the docs is XYZ mentioned?">Find XYZ</button>
+    </div>
+
+    <!-- Chat area -->
+    <ul id="chat" class="flex flex-col gap-4"></ul>
+  </main>
+
+  <!-- Composer -->
+  <div class="fixed bottom-0 inset-x-0 border-t border-white/5 bg-[#0b0e14]/80 backdrop-blur">
+    <div class="mx-auto max-w-5xl px-4 py-4">
+      <form id="ask-form" class="relative">
+        <div class="rounded-2xl border border-white/10 bg-[#0f1320] shadow-glow/0 transition focus-within:shadow-glow">
+          <textarea id="question" rows="1" placeholder="Ask your question… (Shift+Enter = newline)" class="w-full resize-none rounded-2xl bg-transparent px-4 py-3 pr-24 outline-none placeholder:text-slate-500"></textarea>
+          <div class="absolute right-2 bottom-2 flex items-center gap-2">
+            <button type="button" id="copyLastBtn" title="Copy last answer" class="hidden sm:inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 p-2 hover:bg-white/10 transition">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 9h9a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z"/><path d="M7 14H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+            <button id="sendBtn" class="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:shadow-md active:scale-[.98] transition">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12l18-9-7 18-2-7-9-2z"/></svg>
+              Ask
+            </button>
+          </div>
+        </div>
+      </form>
+      <p class="mt-2 text-xs text-slate-500">Tip: Press <kbd class="rounded bg-white/10 px-1">/</kbd> to focus. <kbd class="rounded bg-white/10 px-1">Ctrl</kbd>+<kbd class="rounded bg-white/10 px-1">K</kbd> opens Settings.</p>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="fixed inset-0 z-20 hidden items-center justify-center bg-black/60 p-4">
+    <div class="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0f1320] p-5 shadow-2xl">
+      <div class="mb-4 flex items-start justify-between">
+        <div>
+          <h2 class="text-base font-semibold">Settings</h2>
+          <p class="text-xs text-slate-400">Update API base URL and preferences.</p>
+        </div>
+        <button id="closeSettings" class="rounded-lg p-1 hover:bg-white/10">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="space-y-4">
+        <label class="block">
+          <span class="text-sm text-slate-300">API Base URL</span>
+          <input id="apiBaseInput" type="text" placeholder="http://127.0.0.1:8000" class="mt-1 w-full rounded-lg border border-white/10 bg-[#0b1220] px-3 py-2 outline-none" />
+        </label>
+        <div class="flex items-center justify-end gap-2">
+          <button id="resetApi" class="text-xs text-slate-400 hover:text-slate-200">Reset</button>
+          <button id="saveSettings" class="rounded-lg bg-brand-500 px-4 py-2 text-sm">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-24 left-1/2 z-30 hidden -translate-x-1/2 rounded-xl border border-white/10 bg-[#0f1320] px-4 py-2 text-sm shadow-lg"></div>
+
+  <script>
+    // ===== Config =====
+    const DEFAULT_API_BASE = 'http://127.0.0.1:8000';
+    let API_BASE = localStorage.getItem('api_base') || DEFAULT_API_BASE;
+
+    // ===== Elements =====
+    const chat = document.getElementById('chat');
+    const form = document.getElementById('ask-form');
+    const textarea = document.getElementById('question');
+    const sendBtn = document.getElementById('sendBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const copyLastBtn = document.getElementById('copyLastBtn');
+    const suggestions = document.getElementById('suggestions');
+
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    const closeSettings = document.getElementById('closeSettings');
+    const apiBaseInput = document.getElementById('apiBaseInput');
+    const saveSettings = document.getElementById('saveSettings');
+    const resetApi = document.getElementById('resetApi');
+
+    const toast = document.getElementById('toast');
+
+    // Upload elements
+    const dropZone = document.getElementById('dropZone');
+    const pickBtn = document.getElementById('pickBtn');
+    const fileInput = document.getElementById('fileInput');
+    const uploadList = document.getElementById('uploadList');
+    const uploadHint = document.getElementById('uploadHint');
+    const docsPanel = document.getElementById('docsPanel');
+    const docsBadges = document.getElementById('docsBadges');
+
+    // ===== Utilities =====
+    const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+
+    function showToast(msg) { toast.textContent = msg; toast.classList.remove('hidden'); setTimeout(() => toast.classList.add('hidden'), 2000); }
+    function autoResize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 200) + 'px'; }
+
+    function makeMsg({ role, content, sources }) {
+      const li = document.createElement('li'); li.className = 'flex items-start gap-3';
+      const isUser = role === 'user';
+      const bubble = document.createElement('div');
+      bubble.className = `max-w-[85%] rounded-2xl border px-4 py-3 text-sm shadow transition ${isUser?'ml-auto bg-emerald-500/10 border-emerald-500/30':'mr-auto bg-white/5 border-white/10'}`;
+      const avatar = document.createElement('div');
+      avatar.className = `mt-1 h-8 w-8 flex-shrink-0 rounded-xl ${isUser?'bg-emerald-500/20 text-emerald-300 ml-auto order-2':'bg-brand-500/20 text-brand-300'} flex items-center justify-center`;
+      avatar.innerHTML = isUser
+        ? '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M6 20c0-3.314 2.686-6 6-6s6 2.686 6 6"/></svg>'
+        : '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v4M12 18v4M3.5 7l3.5 2M17 15l3.5 2M2 12h4M18 12h4M3.5 17l3.5-2M17 9l3.5-2"/></svg>';
+      const contentDiv = document.createElement('div'); contentDiv.className = 'prose-answer whitespace-pre-wrap'; contentDiv.innerHTML = escapeHtml(content);
+      bubble.appendChild(contentDiv);
+      if (!isUser && Array.isArray(sources) && sources.length) {
+        const srcWrap = document.createElement('div'); srcWrap.className = 'mt-3 space-y-1';
+        const title = document.createElement('div'); title.className = 'text-[11px] uppercase tracking-wide text-slate-400'; title.textContent = 'Sources'; srcWrap.appendChild(title);
+        const list = document.createElement('div'); list.className = 'flex flex-wrap gap-2';
+        sources.forEach(s=>{ const badge=document.createElement('a'); badge.className='inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs hover:bg-white/10'; badge.textContent=`[${s.id}] ${s.source?.split('/').pop()||s.source}`; badge.href='#'; list.appendChild(badge);});
+        srcWrap.appendChild(list); bubble.appendChild(srcWrap);
+      }
+      if (isUser) { li.appendChild(bubble); li.appendChild(avatar);} else { li.appendChild(avatar); li.appendChild(bubble);} return li;
+    }
+
+    function makeThinking() {
+      const li = document.createElement('li'); li.className = 'flex items-start gap-3';
+      const avatar = document.createElement('div'); avatar.className = 'mt-1 h-8 w-8 flex-shrink-0 rounded-xl bg-brand-500/20 text-brand-300 flex items-center justify-center'; avatar.innerHTML = '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v4M12 18v4M3.5 7l3.5 2M17 15l3.5 2M2 12h4M18 12h4M3.5 17l3.5-2M17 9l3.5-2" /></svg>';
+      const bubble = document.createElement('div'); bubble.className = 'mr-auto max-w-[85%] rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm shadow';
+      bubble.innerHTML = `<div class="flex items-center gap-2"><span>Thinking</span><span class="inline-flex"><span class="mx-0.5 h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:-.2s]"></span><span class="mx-0.5 h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:-.1s]"></span><span class="mx-0.5 h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300"></span></span></div>`;
+      li.appendChild(avatar); li.appendChild(bubble); return li;
+    }
+
+    function scrollToBottom(){ window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }
+
+    // Suggestion chips
+    suggestions.addEventListener('click',(e)=>{ const btn=e.target.closest('button[data-q]'); if(!btn) return; textarea.value=btn.dataset.q; autoResize(textarea); textarea.focus(); });
+    textarea.addEventListener('input',()=>autoResize(textarea));
+    textarea.addEventListener('keydown',(e)=>{ if(e.key==='/'&&textarea.value===''){ e.preventDefault(); textarea.focus(); } if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendBtn.click(); } });
+    document.addEventListener('keydown',(e)=>{ if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){ e.preventDefault(); openSettings(); } });
+
+    form.addEventListener('submit',(e)=>{ e.preventDefault(); ask(); });
+    sendBtn.addEventListener('click',()=>ask());
+    clearBtn.addEventListener('click',()=>{ chat.innerHTML=''; copyLastBtn.classList.add('hidden'); showToast('Cleared'); });
+    copyLastBtn.addEventListener('click',async()=>{ const last=chat.querySelector('li:last-child .prose-answer'); if(!last) return; try{ await navigator.clipboard.writeText(last.innerText); showToast('Copied'); }catch{ showToast('Copy failed'); } });
+
+    settingsBtn.addEventListener('click',openSettings); closeSettings.addEventListener('click',closeSettingsModal);
+    settingsModal.addEventListener('click',(e)=>{ if(e.target===settingsModal) closeSettingsModal(); });
+    saveSettings.addEventListener('click',()=>{ const val=apiBaseInput.value.trim()||DEFAULT_API_BASE; API_BASE=val; localStorage.setItem('api_base',val); closeSettingsModal(); showToast('Saved'); });
+    resetApi.addEventListener('click',()=>{ apiBaseInput.value=DEFAULT_API_BASE; });
+    function openSettings(){ apiBaseInput.value=API_BASE; settingsModal.classList.remove('hidden'); settingsModal.classList.add('flex'); apiBaseInput.focus(); }
+    function closeSettingsModal(){ settingsModal.classList.add('hidden'); settingsModal.classList.remove('flex'); }
+
+    // ===== Uploads =====
+    pickBtn.addEventListener('click',()=>fileInput.click());
+    fileInput.addEventListener('change',()=>{ if(fileInput.files?.length) uploadFiles(fileInput.files); fileInput.value=''; });
+
+    ;['dragenter','dragover'].forEach(evt=>dropZone.addEventListener(evt,(e)=>{ e.preventDefault(); dropZone.classList.add('border-brand-500/50'); }));
+    ;['dragleave','drop'].forEach(evt=>dropZone.addEventListener(evt,()=>dropZone.classList.remove('border-brand-500/50')));
+    dropZone.addEventListener('drop',(e)=>{ e.preventDefault(); const files=e.dataTransfer.files; if(files?.length) uploadFiles(files); });
+
+    async function uploadFiles(fileList){
+      const formData=new FormData();
+      const allowed=new Set(['.pdf','.txt','.md']);
+      const picked=[...fileList].filter(f=>allowed.has('.'+f.name.split('.').pop().toLowerCase()));
+      if(!picked.length){ showToast('Only PDF, TXT, MD allowed'); return; }
+      picked.forEach(f=>formData.append('files',f));
+
+      uploadHint.classList.remove('hidden');
+      const li=document.createElement('li'); li.textContent=`Uploading ${picked.length} file(s)…`; uploadList.appendChild(li);
+
+      try{
+        const res=await fetch(`${API_BASE}/upload`,{ method:'POST', body:formData });
+        if(!res.ok) throw new Error('Upload failed');
+        const data=await res.json();
+        li.textContent=`Added: ${ (data.saved||[]).join(', ') }`;
+        if(data.saved?.length){
+          docsPanel.classList.remove('hidden');
+          (data.saved||[]).forEach(name=>{
+            const b=document.createElement('span'); b.className='rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs'; b.textContent=name; docsBadges.appendChild(b);
+          });
+          showToast('Indexed');
+        }
+      }catch(err){ li.textContent='Upload error'; showToast('Upload error'); }
+      finally{ uploadHint.classList.add('hidden'); }
+    }
+
+    // ===== Ask =====
+    async function ask(){
+      const q=textarea.value.trim(); if(!q) return;
+      chat.appendChild(makeMsg({ role:'user', content:q }));
+      textarea.value=''; autoResize(textarea); clearBtn.classList.remove('hidden');
+      const thinking=makeThinking(); chat.appendChild(thinking); scrollToBottom();
+      try{
+        sendBtn.disabled=true; sendBtn.classList.add('opacity-60');
+        const res=await fetch(`${API_BASE}/ask`,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ question:q }) });
+        if(!res.ok) throw new Error('Bad response');
+        const data=await res.json();
+        thinking.remove(); chat.appendChild(makeMsg({ role:'assistant', content:data.answer||'(no answer)', sources:data.sources||[] }));
+        copyLastBtn.classList.remove('hidden'); scrollToBottom();
+      }catch(err){ thinking.remove(); chat.appendChild(makeMsg({ role:'assistant', content:'Error contacting API. Check Settings → API Base URL.' })); }
+      finally{ sendBtn.disabled=false; sendBtn.classList.remove('opacity-60'); }
+    }
+
+    // Initialize
+    autoResize(textarea);
+    document.addEventListener('DOMContentLoaded',()=>{ document.querySelectorAll('.chip').forEach(el=>{ el.className='chip inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs hover:bg-white/10 transition'; }); });
+  </script>
+</body>
+</html>
